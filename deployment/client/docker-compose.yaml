@@ -6,9 +6,16 @@ services:
         # tty: true
         depends_on:
             - client
+            - video
         environment:
             IP_ADDRESS: client
             VIDEO_INPUT: 0
+    video:
+        image: nimashoghi/streamer
+        privileged: true
+        ports:
+            - "8081:8080"
+        command: -i 'input_uvc.so --device /dev/video0' -o output_http.so
     client:
         image: nimashoghi/dac-v2v
         privileged: true

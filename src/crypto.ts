@@ -4,6 +4,9 @@ import {settings} from "./settings"
 import {Packet, Signed} from "./types"
 import {assertDefined} from "./util"
 
+export const normalizeCode = (code: string) =>
+    code.replace(/(\r\n|\n|\r)/gm, "")
+
 export const loadKeyPair = () => ({
     privateKey: crypto
         .createPrivateKey(

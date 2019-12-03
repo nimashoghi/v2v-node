@@ -1,13 +1,17 @@
-FROM arm32v7/node:alpine
+FROM balenalib/raspberrypi3-alpine-node
+
+RUN ["cross-build-start"]
 
 RUN apk add --no-cache alpine-sdk linux-headers python-dev
 
 WORKDIR /app
 
 COPY ./package.json .
-RUN yarn
+RUN yarn install --production=true
 
-COPY . .
-RUN yarn build
+ADD ./dist/ ./
+ENV NODE_ENV=production
 
-CMD node dist/index.js
+RUN ["cross-build-end"]
+
+CMD node index.js

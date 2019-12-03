@@ -16,7 +16,7 @@ import {
 } from "rxjs/operators"
 import uuid from "uuid/v4"
 import {privateKey, publicKey, verify} from "./crypto"
-import {broadcastSignedMessage, packets} from "./mqtt"
+import {broadcastSignedMessage, packets, mqttMain} from "./mqtt"
 import {
     getQrCodeLocation,
     QrCodeRegistry,
@@ -24,8 +24,9 @@ import {
     registry,
     sensedQrCode,
 } from "./qr"
-import {executeCommand} from "./robot"
-import {confidenceThreshold} from "./settings"
+import {commandsMain, executeCommand} from "./robot"
+import {confidenceThreshold, failureRetryDelay, maxNumRetries} from "./settings"
+import {startSocketServer} from "./socketio"
 import {
     BroadcastPacket,
     Packet,
@@ -76,13 +77,14 @@ const getOriginalPacketFromList = ([...packets]: SignedPacket[]) => {
 
 const retryProcessing = <T>(messagePrefix = ""): MonoTypeOperatorFunction<T> =>
     retryWhen(attempts =>
-        range(1, 5).pipe(
-            zip(attempts, i => {
-                return i
-            }),
+        range(1, maxNumRetries).pipe(
+            zip(attempts, i => i),
             mergeMap(i => {
-                console.log(messagePrefix + "Waiting for 1 second and retrying")
-                return timer(1000)
+                console.log(
+                    `${messagePrefix} [RETRY #${i}] Waiting for ${failureRetryDelay /
+                        1000} seconds and retrying`,
+                )
+                return timer(failureRetryDelay)
             }),
         ),
     )
@@ -246,6 +248,7 @@ const isRebroadcastOfMyPacket = (packet: SignedPacket, publicKey: string) =>
 
 const main = async () => {
     console.log(`Started`)
+    await Promise.all([mqttMain(), startSocketServer(), commandsMain()])
 
     verifiedPackets
         .pipe(

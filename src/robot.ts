@@ -1,4 +1,17 @@
+import {Subject} from "rxjs"
 import SerialPort from "serialport"
+import uuid from "uuid/v4"
+import {privateKey, publicKey} from "./crypto"
+import {broadcastSignedMessage} from "./mqtt"
+import {SocketCommandMessage} from "./socketio"
+
+const sendStartSequence = async () => {
+    await executeCommand([0x80]) // PASISVE mode
+    await executeCommand([0x84]) // FULL mode
+}
+
+const beep = async () =>
+    void (await executeCommand([0x8c, 0x3, 0x1, 0x40, 0x10, 0x8d, 0x3])) // beep
 
 const connection = new SerialPort(
     process.env.ROBOT_SERIAL ?? "/dev/ttyUSB0",
@@ -13,21 +26,17 @@ const connection = new SerialPort(
             return
         }
 
-        await executeCommand([128])
-        await executeCommand([0x84]) // FULL mode
-        await executeCommand([140, 3, 1, 64, 16, 141, 3]) // beep
-
-        // await executeCommand([145, 1, 94, 0, 50])
-        // setTimeout(async () => {
-        //     await executeCommand([145, 0, 0, 0, 0])
-        // }, 5000)
+        await sendStartSequence()
+        await beep()
     },
 )
+
+export const receivedCommandSubject = new Subject<SocketCommandMessage>()
 
 export const executeCommand = async (command: string | Buffer | number[]) => {
     const buffer =
         typeof command === "string" ? Buffer.from(command, "base64") : command
-    console.log(`executing command ${buffer}`)
+    console.log(`Executing command ${buffer}`)
 
     await new Promise<number>((resolve, reject) =>
         connection.write(buffer, (error, bytesWritten) => {
@@ -38,4 +47,19 @@ export const executeCommand = async (command: string | Buffer | number[]) => {
             }
         }),
     )
+}
+
+export const commandsMain = async () => {
+    console.log(`commandsMain called`)
+
+    receivedCommandSubject.subscribe(async ({command}) => {
+        await broadcastSignedMessage(
+            {
+                type: "broadcast",
+                event: {type: "movement", command},
+                source: {id: uuid(), publicKey, timestamp: Date.now()},
+            },
+            privateKey,
+        )
+    })
 }
