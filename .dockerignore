@@ -1,0 +1,13 @@
+.devcontainer/
+.vscode/
+keys/
+node_modules/
+scripts/
+.env
+.gitignore
+.prettierrc.yaml
+keys/
+QrCode/
+deployment/
+keyboard-control/
+dist/

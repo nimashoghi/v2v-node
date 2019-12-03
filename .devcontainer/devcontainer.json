@@ -1,0 +1,20 @@
+{
+    "image": "nimashoghi/node",
+    "runArgs": [
+        // privileged
+        "--privileged",
+        // host networking
+        "--network=host",
+        // docker fowrarding
+        "-v",
+        "//wsl$/Ubuntu/var/run/docker.sock:/var/run/docker.sock",
+        // .env file
+        "--env-file",
+        "./.env"
+    ],
+    "extensions": [
+        "esbenp.prettier-vscode",
+        "wallabyjs.quokka-vscode",
+        "esbenp.prettier-vscode"
+    ]
+}

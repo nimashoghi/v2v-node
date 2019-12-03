@@ -1,0 +1,17 @@
+version: "3.7"
+services:
+    client:
+        image: nimashoghi/v2v-encryption
+        ports:
+            - "8080:8080"
+        environment:
+            SOCKET_SERVER_PORT: "8080"
+            MQTT_HOST: "mqtt://192.168.0.120"
+            MY_TOPIC: "${CLIENT_ID}"
+            ALL_TOPICS: "0,1,2,3"
+            SIMULATION_FILE: "/app/simulation.json"
+            PRIVATE_KEY_LOCATION: "/app/keys/private.pem"
+            PUBLIC_KEY_LOCATION: "/app/keys/public.pem"
+        volumes:
+            - "./keys/${CLIENT_ID}/:/app/keys/"
+            - "./simulation.json:/app/simulation.json"
