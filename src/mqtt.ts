@@ -1,8 +1,7 @@
 import * as MQTT from "async-mqtt"
 import {Subject} from "rxjs"
-import {filter} from "rxjs/operators"
 import {KeyInput, signPacket} from "./crypto"
-import {mqttHost, mqttSettings, packetExpirationDuration} from "./settings"
+import {mqttHost, mqttSettings} from "./settings"
 import {Packet, SignedPacket} from "./types"
 import {assertDefined} from "./util"
 
@@ -12,17 +11,6 @@ const ALL_TOPICS = assertDefined(process.env.ALL_TOPICS)
     .filter(topic => topic !== MY_TOPIC)
 
 export const packetsSubject = new Subject<SignedPacket>()
-export const packets = packetsSubject.pipe(
-    // ignore expired packets
-    filter(({source: {id, timestamp}}) => {
-        const timeSincePacket = Date.now() - timestamp
-        if (timeSincePacket > packetExpirationDuration) {
-            console.log(`Packet ${id} has already expired. Ignoring...`)
-            return false
-        }
-        return true
-    }),
-)
 
 const client = MQTT.connect(mqttHost)
 

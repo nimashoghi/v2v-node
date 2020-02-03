@@ -1,0 +1,1 @@
+-   Take note of the scenario where a vehicle sends a packet and confirms its own rebroadcast.

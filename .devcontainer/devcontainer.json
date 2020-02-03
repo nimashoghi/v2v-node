@@ -1,5 +1,5 @@
 {
-    "image": "nimashoghi/node",
+    "dockerFile": "Dockerfile",
     "runArgs": [
         // privileged
         "--privileged",
@@ -7,7 +7,7 @@
         "--network=host",
         // docker fowrarding
         "-v",
-        "//wsl$/Ubuntu/var/run/docker.sock:/var/run/docker.sock",
+        "/var/run/docker.sock:/var/run/docker.sock",
         // .env file
         "--env-file",
         "./.env"

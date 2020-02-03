@@ -31,7 +31,7 @@ export const qrCodes = qrCodesSubject.pipe(
         }),
         {} as QrCodeRegistry,
     ),
-    startWith({}),
+    startWith({} as QrCodeRegistry),
     tap(registry_ => void (registry = registry_)),
 )
 
