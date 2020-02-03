@@ -1,14 +1,6 @@
 require("dotenv").config({path: process.argv[2] || undefined})
 
-import crypto from "crypto"
-import {
-    combineLatest,
-    MonoTypeOperatorFunction,
-    range,
-    timer,
-    from,
-    of,
-} from "rxjs"
+import {combineLatest, of} from "rxjs"
 import {
     debounceTime,
     distinct,
@@ -16,10 +8,8 @@ import {
     groupBy,
     map,
     mergeMap,
-    retryWhen,
     toArray,
     withLatestFrom,
-    zip,
 } from "rxjs/operators"
 import uuid from "uuid/v4"
 import {privateKey, publicKey, verify} from "./crypto"
@@ -34,8 +24,6 @@ import {
 import {commandsMain, executeCommand} from "./robot"
 import {
     confidenceThreshold,
-    failureRetryDelay,
-    maxNumRetries,
     packetExpirationDuration,
     sensingThreshold,
 } from "./settings"
@@ -79,20 +67,6 @@ const packetIdCalculator = (packet: SignedPacket) => {
     return `${groupingPacket.type}-${JSON.stringify(groupingPacket.source)}`
 }
 
-const retryProcessing = <T>(messagePrefix = ""): MonoTypeOperatorFunction<T> =>
-    retryWhen(attempts =>
-        range(1, maxNumRetries).pipe(
-            zip(attempts, i => i),
-            mergeMap(i => {
-                console.log(
-                    `${messagePrefix} [RETRY #${i}] Waiting for ${failureRetryDelay /
-                        1000} seconds and retrying`,
-                )
-                return timer(failureRetryDelay)
-            }),
-        ),
-    )
-
 interface PacketInformation {
     depth: number
     original: Signed<BroadcastPacket>
@@ -116,6 +90,7 @@ const nonExpiredPackets = packetsSubject.pipe(
     }),
 )
 
+// filter out packet chains that contain me
 const isMineAtAnyPoint = (packet: SignedPacket): boolean => {
     if (packet.source.publicKey === publicKey) {
         return true
@@ -252,11 +227,6 @@ const newSource = (publicKey: string) => ({
     publicKey,
     timestamp: Date.now(),
 })
-
-const isRebroadcastOfMyPacket = (packet: SignedPacket, publicKey: string) =>
-    packet.type === "rebroadcast" &&
-    crypto.createPublicKey(packet.original.source.publicKey) ===
-        crypto.createPublicKey(publicKey)
 
 const main = async () => {
     console.log(`Started`)

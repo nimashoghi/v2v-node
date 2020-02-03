@@ -3,8 +3,6 @@
     "runArgs": [
         // privileged
         "--privileged",
-        // host networking
-        "--network=host",
         // docker fowrarding
         "-v",
         "/var/run/docker.sock:/var/run/docker.sock",
