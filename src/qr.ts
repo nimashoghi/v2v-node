@@ -1,6 +1,5 @@
 import {Subject} from "rxjs"
 import {scan, startWith, tap} from "rxjs/operators"
-import {normalizeCode} from "./crypto"
 import {sensingThreshold} from "./settings"
 import {QrCode} from "./socketio"
 
@@ -37,13 +36,12 @@ export const qrCodes = qrCodesSubject.pipe(
 
 export const sensedQrCode = (
     registry: QrCodeRegistry,
-    code_: string,
+    code: Buffer,
     timestamp: number,
 ) => {
-    const code = normalizeCode(code_)
-    const sensedAt = registry[code]?.sensedAt
+    const sensedAt = registry[code.toString("hex")]?.sensedAt
     if (!sensedAt) {
-        console.log(`We have not sensed code ${code} at all!`)
+        console.log(`We have not sensed code ${code.toString("hex")} at all!`)
         return false
     } else if (Math.abs(sensedAt - timestamp) > sensingThreshold) {
         console.log(
@@ -56,5 +54,5 @@ export const sensedQrCode = (
     return true
 }
 
-export const getQrCodeLocation = (registry: QrCodeRegistry, code: string) =>
-    registry[normalizeCode(code)]?.location
+export const getQrCodeLocation = (registry: QrCodeRegistry, code: Buffer) =>
+    registry[code.toString("hex")]?.location

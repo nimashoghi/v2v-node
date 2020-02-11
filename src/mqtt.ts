@@ -1,6 +1,6 @@
 import * as MQTT from "async-mqtt"
 import {Subject} from "rxjs"
-import {KeyInput, signPacket} from "./crypto"
+import {signPacket} from "./crypto"
 import {mqttHost, mqttSettings} from "./settings"
 import {Packet, SignedPacket} from "./types"
 import {assertDefined} from "./util"
@@ -14,13 +14,19 @@ export const packetsSubject = new Subject<SignedPacket>()
 
 const client = MQTT.connect(mqttHost)
 
-export const broadcastMessage = async (packet: SignedPacket) => {
+export const broadcastMessage = async (packet: SignedPacket) =>
     await client.publish(MY_TOPIC, JSON.stringify(packet), {...mqttSettings})
-}
+
 export const broadcastSignedMessage = async <T extends Packet>(
     original: T,
-    privateKey: KeyInput,
-) => await broadcastMessage(signPacket<T>(original, privateKey) as SignedPacket)
+    publicKey: Buffer,
+    privateKey: Buffer,
+) =>
+    await client.publish(
+        MY_TOPIC,
+        JSON.stringify(signPacket<T>(original, publicKey, privateKey)),
+        {...mqttSettings},
+    )
 
 export const mqttMain = async () => {
     console.log(`mqttMain`)
@@ -28,5 +34,5 @@ export const mqttMain = async () => {
     client.on("message", (_, payload) =>
         packetsSubject.next(JSON.parse(payload.toString())),
     )
-    await client.subscribe(ALL_TOPICS, {...mqttSettings})
+    return await client.subscribe(ALL_TOPICS, {...mqttSettings})
 }

@@ -1,9 +1,9 @@
 import {Subject} from "rxjs"
 import SerialPort from "serialport"
 import uuid from "uuid/v4"
-import {privateKey, publicKey} from "./crypto"
 import {broadcastSignedMessage} from "./mqtt"
 import {SocketCommandMessage} from "./socketio"
+import {KeyPair} from "./crypto"
 
 const sendStartSequence = async () => {
     await executeCommand([0x80]) // PASISVE mode
@@ -49,7 +49,7 @@ export const executeCommand = async (command: string | Buffer | number[]) => {
     )
 }
 
-export const commandsMain = async () => {
+export const commandsMain = async ({publicKey, privateKey}: KeyPair) => {
     console.log(`commandsMain called`)
 
     receivedCommandSubject.subscribe(async ({command}) => {
@@ -59,6 +59,7 @@ export const commandsMain = async () => {
                 event: {type: "movement", command},
                 source: {id: uuid(), publicKey, timestamp: Date.now()},
             },
+            publicKey,
             privateKey,
         )
     })

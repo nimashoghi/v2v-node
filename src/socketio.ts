@@ -18,7 +18,7 @@ export interface SocketQrMessage {
     codes: QrCode[]
 }
 
-export const startSocketServer = async () => {
+export const socketMain = async () => {
     console.log(`Starting socket server on port ${socketServerPort}`)
 
     const server = io()

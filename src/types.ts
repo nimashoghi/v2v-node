@@ -9,18 +9,18 @@ export type ObjectLocation = "LEFT" | "CENTER" | "RIGHT"
 export interface PacketSource {
     id: string
     timestamp: number
-    publicKey: string
+    publicKey: Buffer
 }
 
 export interface PacketBase {
     source: PacketSource
 }
 
-export type Unsigned<T extends PacketBase & {signature: string}> = Omit<
+export type Unsigned<T extends PacketBase & {signature: Buffer}> = Omit<
     T,
     "signature"
 >
-export type Signed<T extends PacketBase> = T & {signature: string}
+export type Signed<T extends PacketBase> = T & {signature: Buffer}
 
 export interface BroadcastPacket extends PacketBase {
     type: "broadcast"
@@ -35,3 +35,9 @@ export interface RebroadcastPacket extends PacketBase {
 
 export type Packet = BroadcastPacket | RebroadcastPacket
 export type SignedPacket = Signed<BroadcastPacket> | Signed<RebroadcastPacket>
+
+export interface PacketInformation {
+    depth: number
+    original: Signed<BroadcastPacket>
+    packet: SignedPacket
+}

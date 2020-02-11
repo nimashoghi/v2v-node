@@ -12,154 +12,103 @@ import {
     withLatestFrom,
 } from "rxjs/operators"
 import uuid from "uuid/v4"
-import {privateKey, publicKey, verify} from "./crypto"
+import {KeyPair, loadKeyPair} from "./crypto"
 import {broadcastSignedMessage, mqttMain, packetsSubject} from "./mqtt"
 import {
-    getQrCodeLocation,
-    QrCodeRegistry,
-    qrCodes,
-    registry,
-    sensedQrCode,
-} from "./qr"
+    calculateConfidenceScore,
+    getPacketInformation,
+    isMineAtAnyPoint,
+    packetIdCalculator,
+    verifyPacket,
+} from "./packet-utils"
+import {getQrCodeLocation, qrCodes, sensedQrCode} from "./qr"
 import {commandsMain, executeCommand} from "./robot"
 import {
     confidenceThreshold,
     packetExpirationDuration,
     sensingThreshold,
 } from "./settings"
-import {startSocketServer} from "./socketio"
-import {
-    BroadcastPacket,
-    Packet,
-    RebroadcastPacket,
-    Signed,
-    SignedPacket,
-} from "./types"
-import {assert, runAsync, unreachable} from "./util"
+import {socketMain} from "./socketio"
+import {BroadcastPacket, Packet, Signed, SignedPacket} from "./types"
+import {runAsync, unreachable} from "./util"
 
 const processedPacketIds = new Set<string>()
 
-const verifyPacket = ({signature, ...packet}: SignedPacket) =>
-    verify(
-        JSON.stringify(packet),
-        Buffer.from(signature, "base64"),
-        packet.source.publicKey,
+const streamSetup = ({publicKey}: KeyPair) => {
+    // ignore expired packets
+    const nonExpiredPackets = packetsSubject.pipe(
+        filter(({source: {id, timestamp}}) => {
+            if (Date.now() - timestamp > packetExpirationDuration) {
+                console.log(`Packet ${id} has already expired. Ignoring...`)
+                return false
+            }
+            return true
+        }),
     )
 
-const getOriginalPacket = (
-    packet: Signed<RebroadcastPacket>,
-): Signed<BroadcastPacket> => {
-    assert(verifyPacket(packet))
-
-    switch (packet.original.type) {
-        case "broadcast":
-            return packet.original
-        case "rebroadcast":
-            return getOriginalPacket(packet.original)
-        default:
-            return unreachable()
-    }
-}
-
-const packetIdCalculator = (packet: SignedPacket) => {
-    const groupingPacket =
-        packet.type === "broadcast" ? packet : getOriginalPacket(packet)
-    return `${groupingPacket.type}-${JSON.stringify(groupingPacket.source)}`
-}
-
-interface PacketInformation {
-    depth: number
-    original: Signed<BroadcastPacket>
-    packet: SignedPacket
-}
-
-const getPacketInformation = (packet: SignedPacket): PacketInformation => ({
-    depth: getDepth(packet),
-    original:
-        packet.type === "rebroadcast" ? getOriginalPacket(packet) : packet,
-    packet,
-})
-const nonExpiredPackets = packetsSubject.pipe(
-    // ignore expired packets
-    filter(({source: {id, timestamp}}) => {
-        if (Date.now() - timestamp > packetExpirationDuration) {
-            console.log(`Packet ${id} has already expired. Ignoring...`)
-            return false
-        }
-        return true
-    }),
-)
-
-// filter out packet chains that contain me
-const isMineAtAnyPoint = (packet: SignedPacket): boolean => {
-    if (packet.source.publicKey === publicKey) {
-        return true
-    }
-    return packet.type === "broadcast"
-        ? false
-        : isMineAtAnyPoint(packet.original)
-}
-
-// pipe out packets that are not mine
-const nonMinePackets = nonExpiredPackets.pipe(
-    filter(packet => !isMineAtAnyPoint(packet)),
-)
-// these are packets that are verified by the QR code that they pretend to be from
-const verifiedPackets = nonMinePackets.pipe(
-    // tap(packet => console.log({packet})),
-    filter(packet => verifyPacket(packet)),
-)
-// get the packet original information so we don't have to recalculate in the future
-const packetInformation = verifiedPackets.pipe(map(getPacketInformation))
-// filter out packets that we have processed already
-const nonProcessedpacketInformation = packetInformation.pipe(
-    filter(({original}) => !processedPacketIds.has(original.source.id)),
-)
-const groupedPackets = nonProcessedpacketInformation.pipe(
-    // get all packets that have the same original packet (i.e., all original packets and their rebroadcasts)
-    groupBy(
-        ({original: {source}}) => JSON.stringify(source),
-        undefined,
-        grouped => grouped.pipe(debounceTime(sensingThreshold)),
-    ),
-    // array of groups
-    mergeMap(group =>
-        group.pipe(
-            // remove duplicates
-            distinct(({packet: {source}}) => JSON.stringify(source)),
-            // remove multiple rebroadcasts by the same original source
-            distinct(({packet: {source: {publicKey}}}) =>
-                JSON.stringify(publicKey),
+    // pipe out packets that are not mine
+    const nonMinePackets = nonExpiredPackets.pipe(
+        filter(packet => !isMineAtAnyPoint(packet, publicKey)),
+    )
+    // these are packets that are verified by the QR code that they pretend to be from
+    const verifiedPackets = nonMinePackets.pipe(
+        // tap(packet => console.log({packet})),
+        filter(packet => verifyPacket(packet)),
+    )
+    // get the packet original information so we don't have to recalculate in the future
+    const packetInformation = verifiedPackets.pipe(map(getPacketInformation))
+    // filter out packets that we have processed already
+    const nonProcessedpacketInformation = packetInformation.pipe(
+        filter(({original}) => !processedPacketIds.has(original.source.id)),
+    )
+    const groupedPackets = nonProcessedpacketInformation.pipe(
+        // get all packets that have the same original packet (i.e., all original packets and their rebroadcasts)
+        groupBy(
+            ({original: {source}}) => JSON.stringify(source),
+            undefined,
+            grouped => grouped.pipe(debounceTime(sensingThreshold)),
+        ),
+        // array of groups
+        mergeMap(group =>
+            group.pipe(
+                // remove duplicates
+                distinct(({packet: {source}}) => JSON.stringify(source)),
+                // remove multiple rebroadcasts by the same original source
+                distinct(({packet: {source: {publicKey}}}) =>
+                    JSON.stringify(publicKey),
+                ),
+                // convert group to array
+                toArray(),
+                // subscribe to live updating qr code registry
+                withLatestFrom(qrCodes),
             ),
-            // convert group to array
-            toArray(),
-            // subscribe to live updating qr code registry
-            withLatestFrom(qrCodes),
         ),
-    ),
-)
-// legitimate packets that have passed confidence threshold
-const legitimatePackets = groupedPackets.pipe(
-    // calculate confidence scores
-    map(([informations, registry]) => ({
-        confidence: calculateConfidenceScore(informations, registry),
-        original: informations[0].original,
-    })),
-    // filter out packets that haven't met threshold
-    filter(({confidence}) => confidence.score >= confidenceThreshold),
-)
-// packets that we have verified with our sensor information
-const rebroadcastablePackets = verifiedPackets.pipe(
-    mergeMap(packet => combineLatest(of(packet), qrCodes)),
-    filter(([packet, registry]) =>
-        sensedQrCode(
-            registry,
-            packet.source.publicKey,
-            packet.source.timestamp,
+    )
+    // legitimate packets that have passed confidence threshold
+    const legitimatePackets = groupedPackets.pipe(
+        // calculate confidence scores
+        map(([informations, registry]) => ({
+            confidence: calculateConfidenceScore(informations, registry),
+            original: informations[0].original,
+        })),
+        // filter out packets that haven't met threshold
+        filter(({confidence}) => confidence.score >= confidenceThreshold),
+    )
+    // packets that we have verified with our sensor information
+    const rebroadcastablePackets = verifiedPackets.pipe(
+        mergeMap(packet => combineLatest(of(packet), qrCodes)),
+        filter(([packet, registry]) =>
+            sensedQrCode(
+                registry,
+                packet.source.publicKey,
+                packet.source.timestamp,
+            ),
         ),
-    ),
-    distinct(([{source}]) => JSON.stringify(source)),
-)
+        distinct(([{source}]) => JSON.stringify(source)),
+    )
+
+    return {legitimatePackets, rebroadcastablePackets}
+}
 
 const dumpSignature = <T extends Packet>({
     signature,
@@ -191,46 +140,20 @@ const onNewPacket = async (packet: Signed<BroadcastPacket>) => {
     }
 }
 
-const getDepth = (message: SignedPacket): number =>
-    message.type === "broadcast" ? 1 : 1 + getDepth(message.original)
-
-const calculateConfidenceScore = (
-    values: PacketInformation[],
-    qrCodeRegistry: QrCodeRegistry = registry,
-) =>
-    values
-        .map(({depth, packet}) => {
-            if (
-                !sensedQrCode(
-                    qrCodeRegistry,
-                    packet.source.publicKey,
-                    packet.source.timestamp,
-                )
-            ) {
-                return [0, true] as const
-            }
-            console.log(
-                `Successfully sensed the QR code for ${packet.source.id}`,
-            )
-            return [1 / depth, false] as const
-        })
-        .reduce(
-            ({score, unsensed}, [currScore, currUnsensed]) => ({
-                score: score + currScore,
-                unsensed: unsensed || currUnsensed,
-            }),
-            {score: 0, unsensed: false},
-        )
-
-const newSource = (publicKey: string) => ({
-    id: uuid(),
-    publicKey,
-    timestamp: Date.now(),
-})
-
 const main = async () => {
     console.log(`Started`)
-    await Promise.all([mqttMain(), startSocketServer(), commandsMain()])
+
+    const {privateKey, publicKey} = await loadKeyPair()
+    await Promise.all([
+        mqttMain(),
+        socketMain(),
+        commandsMain({privateKey, publicKey}),
+    ])
+
+    const {legitimatePackets, rebroadcastablePackets} = streamSetup({
+        privateKey,
+        publicKey,
+    })
 
     rebroadcastablePackets.subscribe(([original, registry]) =>
         runAsync(async () => {
@@ -247,11 +170,16 @@ const main = async () => {
 
             await broadcastSignedMessage(
                 {
-                    source: newSource(publicKey),
+                    source: {
+                        id: uuid(),
+                        publicKey,
+                        timestamp: Date.now(),
+                    },
                     type: "rebroadcast",
                     location,
                     original,
                 },
+                publicKey,
                 privateKey,
             )
         }),
@@ -273,27 +201,6 @@ const main = async () => {
         },
         error => console.log({error}),
     )
-
-    // const simulations = await getAllSimulations()
-    // simulations
-    //     .pipe(
-    //         flatMap(async event => {
-    //             console.log(
-    //                 `Broadcasting the following event: ${JSON.stringify(
-    //                     event,
-    //                 )}`,
-    //             )
-    //             await broadcastSignedMessage(
-    //                 {
-    //                     type: "broadcast",
-    //                     event,
-    //                     source: newSource(publicKey),
-    //                 },
-    //                 privateKey,
-    //             )
-    //         }),
-    //     )
-    //     .subscribe(() => {})
 }
 
 main().catch(console.error)
