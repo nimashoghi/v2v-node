@@ -1,5 +1,6 @@
 require("dotenv").config({path: process.argv[2] || undefined})
 
+import chalk from "chalk"
 import {combineLatest, of} from "rxjs"
 import {
     debounceTime,
@@ -23,12 +24,13 @@ import {
     verifyPacket,
 } from "./packet-utils"
 import {getQrCodeLocation, qrCodes, sensedQrCode} from "./qr"
+import {randomPacketsMain} from "./randomPackets"
 import {
     confidenceThreshold,
     packetExpirationDuration,
     sensingThreshold,
 } from "./settings"
-import {setupMockData} from "./setupMockData"
+import {timelineMain} from "./timeline"
 import {
     BroadcastPacket,
     Packet,
@@ -37,7 +39,6 @@ import {
     SignedPacket,
 } from "./types"
 import {runAsync, sleep} from "./util"
-import chalk from "chalk"
 
 const processedPacketIds = new Set<string>()
 
@@ -148,9 +149,6 @@ const streamSetup = ({publicKey}: KeyPair) => {
             ),
         ),
         distinct(([{source}]) => JSON.stringify(source)),
-        tap(([original]) =>
-            console.log(`Rebroadcastable packet: ${original.source.id}`),
-        ),
     )
 
     return {legitimatePackets, rebroadcastablePackets}
@@ -189,7 +187,7 @@ const main = async () => {
     console.log(`Started`)
 
     const {privateKey, publicKey} = await loadKeyPair()
-    await Promise.all([mqttMain()])
+    const mqttClient = await mqttMain()
 
     const {legitimatePackets, rebroadcastablePackets} = streamSetup({
         privateKey,
@@ -208,8 +206,12 @@ const main = async () => {
                 )
                 return
             }
+            console.log(
+                chalk`{green Rebroadcasting packet ${original.source.id}}`,
+            )
 
             await broadcastSignedMessage(
+                mqttClient,
                 {
                     source: {
                         id: uuid(),
@@ -246,9 +248,8 @@ const main = async () => {
         error => console.log({error}),
     )
 
-    console.log("sleeping for 500, then setting up mock data")
     await sleep(500)
-    await setupMockData()
+    await Promise.all([timelineMain(), randomPacketsMain(mqttClient)])
 }
 
 main().catch(console.error)

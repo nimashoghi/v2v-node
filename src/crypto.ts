@@ -9,7 +9,10 @@ export interface KeyPair {
     publicKey: Buffer
 }
 
-export const createKeyPair = () => ed.createKeyPair(ed.createSeed())
+export const createKeyPair = (): KeyPair => {
+    const {publicKey, secretKey} = ed.createKeyPair(ed.createSeed())
+    return {publicKey, privateKey: secretKey}
+}
 
 export const loadKeyPair = async () => {
     const [privateKey, publicKey] = await Promise.all([

@@ -14,9 +14,8 @@ const ALL_TOPICS = assertDefined(process.env.ALL_TOPICS)
 export const packetsSubject = new Subject<SignedPacket>()
 export const packetsObservable = packetsSubject.pipe()
 
-const client = MQTT.connect(HOST)
-
 export const broadcastSignedMessage = async <T extends Packet>(
+    client: MQTT.AsyncMqttClient,
     original: T,
     publicKey: Buffer,
     privateKey: Buffer,
@@ -28,8 +27,11 @@ export const broadcastSignedMessage = async <T extends Packet>(
     )
 
 export const mqttMain = async () => {
+    const client = await MQTT.connectAsync(HOST, {}, false)
     client.on("message", (_, payload) =>
         packetsSubject.next(JSON.parse(payload.toString())),
     )
-    client.subscribe(ALL_TOPICS, {...mqttSettings})
+    console.log("got here")
+    await client.subscribe(ALL_TOPICS, {...mqttSettings})
+    return client
 }

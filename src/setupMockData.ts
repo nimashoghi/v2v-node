@@ -1,12 +1,10 @@
 import chalk from "chalk"
-// @ts-ignore
-import {KeyPair} from "ed25519-supercop"
 import uuid from "uuid/v4"
-import {createKeyPair, signPacket} from "./crypto"
+import {createKeyPair, KeyPair, signPacket} from "./crypto"
 import {packetsSubject} from "./mqtt"
 import {qrCodesSubject} from "./qr"
 import {packetExpirationDuration} from "./settings"
-import {RebroadcastPacket, Signed, SignedPacket, Packet} from "./types"
+import {Packet, RebroadcastPacket, Signed, SignedPacket} from "./types"
 import {sleep} from "./util"
 
 const getConfirmations = (
@@ -31,7 +29,7 @@ const getConfirmations = (
                 },
             },
             other.publicKey,
-            other.secretKey,
+            other.privateKey,
         )
         confirmations.push({other, packet})
     }
@@ -52,7 +50,7 @@ const getNewPacket = () => {
             source,
         },
         other.publicKey,
-        other.secretKey,
+        other.privateKey,
     )
     return {packet, other}
 }
