@@ -1,3 +1,4 @@
+// @ts-ignore
 import * as ed from "ed25519-supercop"
 import {promises as fs} from "fs"
 import {Packet, Signed} from "./types"
@@ -7,6 +8,8 @@ export interface KeyPair {
     privateKey: Buffer
     publicKey: Buffer
 }
+
+export const createKeyPair = () => ed.createKeyPair(ed.createSeed())
 
 export const loadKeyPair = async () => {
     const [privateKey, publicKey] = await Promise.all([

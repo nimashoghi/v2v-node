@@ -18,7 +18,7 @@ export const verifyPacket = ({signature, ...packet}: SignedPacket) =>
     )
 
 export const getDepth = (message: SignedPacket): number =>
-    message.type === "broadcast" ? 1 : 1 + getDepth(message.original)
+    message.type === "broadcast" ? 0 : 1 + getDepth(message.original)
 
 export const calculateConfidenceScore = (
     values: PacketInformation[],
@@ -38,14 +38,15 @@ export const calculateConfidenceScore = (
             console.log(
                 `Successfully sensed the QR code for ${packet.source.id}`,
             )
-            return [1 / depth, false] as const
+            return [1 / 2 ** depth, false] as const
         })
         .reduce(
-            ({score, unsensed}, [currScore, currUnsensed]) => ({
+            ({confirmations, score, unsensed}, [currScore, currUnsensed]) => ({
+                confirmations: confirmations + (currScore === 0 ? 0 : 1),
                 score: score + currScore,
                 unsensed: unsensed || currUnsensed,
             }),
-            {score: 0, unsensed: false},
+            {confirmations: 0, score: 0, unsensed: false},
         )
 
 export const getOriginalPacket = (

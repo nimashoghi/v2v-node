@@ -1,8 +1,12 @@
 import {Subject} from "rxjs"
 import {scan, startWith, tap} from "rxjs/operators"
 import {sensingThreshold} from "./settings"
-import {QrCode} from "./socketio"
+import {ObjectLocation} from "./types"
 
+export interface QrCode {
+    location: ObjectLocation
+    publicKey: Buffer
+}
 export interface QrCodeInformation extends QrCode {
     sensedAt: number
 }
@@ -17,16 +21,15 @@ export const qrCodesSubject = new Subject<QrCode>()
 export const qrCodes = qrCodesSubject.pipe(
     tap(({location, publicKey}) =>
         console.log(
-            `Sensed the following code to the ${location}: ${publicKey.slice(
-                0,
-                25,
-            )}...`,
+            `Sensed the following code to the ${location}: ${publicKey
+                .toString("hex")
+                .slice(0, 4)}`,
         ),
     ),
     scan(
         (acc, curr) => ({
             ...acc,
-            [curr.publicKey]: {...curr, sensedAt: Date.now()},
+            [curr.publicKey.toString("hex")]: {...curr, sensedAt: Date.now()},
         }),
         {} as QrCodeRegistry,
     ),
@@ -41,7 +44,11 @@ export const sensedQrCode = (
 ) => {
     const sensedAt = registry[code.toString("hex")]?.sensedAt
     if (!sensedAt) {
-        console.log(`We have not sensed code ${code.toString("hex")} at all!`)
+        console.log(
+            `We have not sensed code ${code
+                .toString("hex")
+                .slice(0, 4)} at all!`,
+        )
         return false
     } else if (Math.abs(sensedAt - timestamp) > sensingThreshold) {
         console.log(

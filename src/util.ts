@@ -1,6 +1,3 @@
-import {QrCodeRegistry, registry, sensedQrCode} from "./qr"
-import {PacketInformation} from "./types"
-
 export function assert(
     condition: unknown,
     message = "Assertion failed!",
