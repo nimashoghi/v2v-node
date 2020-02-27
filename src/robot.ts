@@ -1,18 +1,23 @@
 import {Subject} from "rxjs"
 import SerialPort from "serialport"
 import uuid from "uuid/v4"
-import {broadcastSignedMessage} from "./mqtt"
-import {SocketCommandMessage} from "./socketio"
 import {KeyPair} from "./crypto"
+import {broadcastSignedMessage} from "./mqtt"
 
-const sendStartSequence = async () => {
-    await executeCommand([0x80]) // PASISVE mode
-    await executeCommand([0x84]) // FULL mode
+const commands = {
+    BEEP: [0x8c, 0x3, 0x1, 0x40, 0x10, 0x8d, 0x3],
+    FULL: [0x84],
+    PASSIVE: [0x80],
 }
 
-const beep = async () =>
-    void (await executeCommand([0x8c, 0x3, 0x1, 0x40, 0x10, 0x8d, 0x3])) // beep
+const sendStartSequence = async () => {
+    await executeCommand(commands.PASSIVE)
+    await executeCommand(commands.FULL)
+}
 
+const beep = async () => {
+    await executeCommand(commands.BEEP)
+}
 const connection = new SerialPort(
     process.env.ROBOT_SERIAL ?? "/dev/ttyUSB0",
     {
