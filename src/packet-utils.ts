@@ -10,44 +10,56 @@ import {
 } from "./types"
 import {unreachable} from "./util"
 
-export const verifyPacket = ({signature, ...packet}: SignedPacket) =>
-    verify(
+export const verifyPacket = ({signature, ...packet}: SignedPacket) => {
+    return verify(
         Buffer.from(JSON.stringify(packet), "ascii"),
-        signature,
-        packet.source.publicKey,
+        Buffer.from(signature, "hex"),
+        Buffer.from(packet.source.publicKey, "hex"),
     )
+}
 
 export const getDepth = (message: SignedPacket): number =>
-    message.type === "broadcast" ? 0 : 1 + getDepth(message.original)
+    message.type === "broadcast" ? 1 : 1 + getDepth(message.original)
 
 export const calculateConfidenceScore = (
     values: PacketInformation[],
     qrCodeRegistry: QrCodeRegistry = registry,
-) =>
-    values
+) => {
+    // console.log({
+    //     froms: values.map(
+    //         ({
+    //             packet: {
+    //                 source: {publicKey},
+    //             },
+    //         }) => publicKey,
+    //     ),
+    //     qrCodeRegistry,
+    // })
+
+    return values
         .map(({depth, packet}) => {
             if (
                 !sensedQrCode(
                     qrCodeRegistry,
-                    packet.source.publicKey,
+                    Buffer.from(packet.source.publicKey, "hex"),
                     packet.source.timestamp,
                 )
             ) {
-                return [0, true] as const
+                return 0
             }
             console.log(
                 `Successfully sensed the QR code for ${packet.source.id}`,
             )
-            return [1 / 2 ** depth, false] as const
+            return 1 / depth
         })
         .reduce(
-            ({confirmations, score, unsensed}, [currScore, currUnsensed]) => ({
+            ({confirmations, score}, currScore) => ({
                 confirmations: confirmations + (currScore === 0 ? 0 : 1),
                 score: score + currScore,
-                unsensed: unsensed || currUnsensed,
             }),
-            {confirmations: 0, score: 0, unsensed: false},
+            {confirmations: 0, score: 0},
         )
+}
 
 export const getOriginalPacket = (
     packet: Signed<RebroadcastPacket>,
@@ -64,9 +76,11 @@ export const getOriginalPacket = (
     }
 }
 
-export const packetIdCalculator = (packet: SignedPacket) => {
+export const packetIdCalculator = (packet: SignedPacket, original = true) => {
     const groupingPacket =
-        packet.type === "broadcast" ? packet : getOriginalPacket(packet)
+        packet.type === "broadcast" || !original
+            ? packet
+            : getOriginalPacket(packet)
     return `${groupingPacket.type}-${JSON.stringify(groupingPacket.source)}`
 }
 
@@ -75,7 +89,7 @@ export const isMineAtAnyPoint = (
     packet: SignedPacket,
     publicKey: Buffer,
 ): boolean => {
-    if (packet.source.publicKey === publicKey) {
+    if (packet.source.publicKey === publicKey.toString("hex")) {
         return true
     }
     return packet.type === "broadcast"

@@ -24,7 +24,7 @@ const getConfirmations = (
                 location: "CENTER",
                 source: {
                     id: uuid(),
-                    publicKey: other.publicKey,
+                    publicKey: other.publicKey.toString("hex"),
                     timestamp: Date.now(),
                 },
             },
@@ -40,7 +40,7 @@ const getNewPacket = () => {
     const other = createKeyPair()
     const source: SignedPacket["source"] = {
         id: uuid(),
-        publicKey: other.publicKey,
+        publicKey: other.publicKey.toString("hex"),
         timestamp: Date.now(),
     }
     const packet = signPacket(

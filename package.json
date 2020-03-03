@@ -27,6 +27,7 @@
         "dotenv": "^8.2.0",
         "ed25519-supercop": "^1.2.0",
         "execa": "^4.0.0",
+        "python-struct": "^1.1.2",
         "rxjs": "^6.5.3",
         "serialport": "^8.0.5",
         "socket.io": "^2.3.0",

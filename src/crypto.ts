@@ -28,7 +28,13 @@ export const signPacket = <T extends Packet>(
     privateKey: Buffer,
 ): Signed<T> => ({
     ...original,
-    signature: ed.sign(JSON.stringify(original), publicKey, privateKey),
+    signature: ed
+        .sign(
+            Buffer.from(JSON.stringify(original), "ascii"),
+            publicKey,
+            privateKey,
+        )
+        .toString("hex"),
 })
 
 export const verify = (message: Buffer, signature: Buffer, publicKey: Buffer) =>

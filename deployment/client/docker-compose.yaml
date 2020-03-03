@@ -1,33 +1,21 @@
 version: "3.7"
 services:
-    qr:
-        image: nimashoghi/v2v-qr
-        privileged: true
-        # tty: true
-        depends_on:
-            - client
-            - video
-        environment:
-            IP_ADDRESS: client
-            VIDEO_INPUT: 0
-    video:
-        image: nimashoghi/streamer
-        privileged: true
-        ports:
-            - "8081:8080"
-        command: -i 'input_uvc.so --device /dev/video0' -o output_http.so
     client:
-        image: nimashoghi/dac-v2v
-        privileged: true
-        tty: true
-        ports:
-            - "8080:8080"
+        image: nimashoghi/v2v-node:latest
         environment:
-            SOCKET_SERVER_PORT: "8080"
-            MQTT_HOST: "mqtt://192.168.1.10"
+            MQTT_HOST: "mqtt://192.168.1.14"
             MY_TOPIC: "${CLIENT_ID}"
             ALL_TOPICS: "0,1"
-            PRIVATE_KEY_LOCATION: "/app/keys/private.pem"
-            PUBLIC_KEY_LOCATION: "/app/keys/public.pem"
+            PRIVATE_KEY_LOCATION: "/app/keys/${CLIENT_ID}-private.bin"
+            PUBLIC_KEY_LOCATION: "/app/keys/${CLIENT_ID}-public.bin"
         volumes:
-            - "./keys/${CLIENT_ID}/:/app/keys/"
+            - "./keys/:/app/keys/"
+            - socket:/v2v/
+    reader:
+        image: nimashoghi/v2v-cpp
+        depends_on:
+            - client
+        volumes:
+            - socket:/v2v/
+volumes:
+    socket:

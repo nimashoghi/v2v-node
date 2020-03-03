@@ -1,9 +1,9 @@
 import {promises as fs} from "fs"
 import net from "net"
-import {Observable, ReplaySubject, range, interval} from "rxjs"
-import {map} from "rxjs/operators"
-import {QrCode, qrCodesSubject} from "./qr"
-import {ObjectLocation} from "./types"
+import {Observable, ReplaySubject} from "rxjs"
+import {qrCodesSubject} from "./qr"
+
+const IPC_SOCKET_PATH = () => process.env.IPC_SOCKET_PATH ?? "/v2v/server.sock"
 
 const server = async (filePath: string) => {
     try {
@@ -30,28 +30,12 @@ const server = async (filePath: string) => {
     return [observable, subject] as const
 }
 
-const getKeys = async () =>
-    await Promise.all(
-        Array.from(Array(5)).map(
-            async (_, i) => await fs.readFile(`./keys/${i}-public.bin`),
-        ),
-    )
-
-const getRandomElement = <T>(array: T[]) =>
-    array[Math.floor(Math.random() * array.length)]
-
 export const ipcMain = async () => {
-    const locations: ObjectLocation[] = ["CENTER", "LEFT", "RIGHT"]
-    const keys = await getKeys()
-
-    const observable = interval(1000).pipe(
-        map(
-            () =>
-                ({
-                    publicKey: getRandomElement(keys),
-                    location: getRandomElement(locations),
-                } as QrCode),
-        ),
-    )
-    return observable.subscribe(qrCode => qrCodesSubject.next(qrCode))
+    const [observable] = await server(IPC_SOCKET_PATH())
+    return observable.subscribe(publicKey => {
+        qrCodesSubject.next({
+            location: "CENTER",
+            publicKey,
+        })
+    })
 }

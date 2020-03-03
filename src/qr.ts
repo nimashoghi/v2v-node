@@ -19,13 +19,13 @@ export let registry: QrCodeRegistry = {}
 
 export const qrCodesSubject = new Subject<QrCode>()
 export const qrCodes = qrCodesSubject.pipe(
-    tap(({location, publicKey}) =>
-        console.log(
-            `Sensed the following code to the ${location}: ${publicKey
-                .toString("hex")
-                .slice(0, 4)}`,
-        ),
-    ),
+    // tap(({location, publicKey}) =>
+    //     console.log(
+    //         `Sensed the following code to the ${location}: ${publicKey
+    //             .toString("hex")
+    //             .slice(0, 4)}`,
+    //     ),
+    // ),
     scan(
         (acc, curr) => ({
             ...acc,
@@ -44,18 +44,18 @@ export const sensedQrCode = (
 ) => {
     const sensedAt = registry[code.toString("hex")]?.sensedAt
     if (!sensedAt) {
-        console.log(
-            `We have not sensed code ${code
-                .toString("hex")
-                .slice(0, 4)} at all!`,
-        )
+        // console.log(
+        //     `We have not sensed code ${code
+        //         .toString("hex")
+        //         .slice(0, 4)} at all!`,
+        // )
         return false
     } else if (Math.abs(sensedAt - timestamp) > sensingThreshold) {
-        console.log(
-            `We have sensed the packet ${(Math.abs(sensedAt - timestamp) -
-                sensingThreshold) /
-                1000} seconds too late!`,
-        )
+        // console.log(
+        //     `We have sensed the packet ${(Math.abs(sensedAt - timestamp) -
+        //         sensingThreshold) /
+        //         1000} seconds too late!`,
+        // )
         return false
     }
     return true

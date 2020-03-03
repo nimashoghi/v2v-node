@@ -12,9 +12,11 @@ import {
     scan,
     tap,
 } from "rxjs/operators"
+import SerialPort from "serialport"
 import {inspect} from "util"
 import uuid from "uuid/v4"
 import {KeyPair, loadKeyPair} from "./crypto"
+import {ipcMain} from "./ipc"
 import {broadcastSignedMessage, mqttMain, packetsObservable} from "./mqtt"
 import {
     calculateConfidenceScore,
@@ -24,13 +26,12 @@ import {
     verifyPacket,
 } from "./packet-utils"
 import {getQrCodeLocation, qrCodes, sensedQrCode} from "./qr"
-import {randomPacketsMain} from "./randomPackets"
+import {commandsMain, executeCommand} from "./robot"
 import {
     confidenceThreshold,
     packetExpirationDuration,
     sensingThreshold,
 } from "./settings"
-import {timelineMain} from "./timeline"
 import {
     BroadcastPacket,
     Packet,
@@ -38,13 +39,29 @@ import {
     Signed,
     SignedPacket,
 } from "./types"
-import {runAsync, sleep} from "./util"
+import {runAsync} from "./util"
 
 const processedPacketIds = new Set<string>()
 
 const streamSetup = ({publicKey}: KeyPair) => {
+    // filter out packets that we have processed already
+    const nonProcessedFirstCheck = packetsObservable.pipe(
+        // tap(packet => {
+        //     if (networkDelay.has(packet.source.id)) {
+        //         return
+        //     }
+        //     networkDelay.set(
+        //         packet.source.id,
+        //         Date.now() - packet.source.timestamp,
+        //     )
+        // }),
+        filter(
+            packet =>
+                !processedPacketIds.has(packetIdCalculator(packet, false)),
+        ),
+    )
     // ignore expired packets
-    const nonExpiredPackets = packetsObservable.pipe(
+    const nonExpiredPackets = nonProcessedFirstCheck.pipe(
         filter(({source: {id, timestamp}}) => {
             if (Date.now() - timestamp > packetExpirationDuration) {
                 console.log(
@@ -93,22 +110,26 @@ const streamSetup = ({publicKey}: KeyPair) => {
                 // remove duplicates
                 distinct(({packet: {source}}) => JSON.stringify(source)),
                 // remove multiple rebroadcasts by the same original source
-                distinct(({packet: {source: {publicKey}}}) =>
-                    JSON.stringify(publicKey),
+                distinct(
+                    ({
+                        packet: {
+                            source: {publicKey},
+                        },
+                    }) => publicKey,
                 ),
                 // convert group to array
                 scan((acc, curr) => [...acc, curr], [] as PacketInformation[]),
             ),
         ),
     )
-    // subscribe to live updating qr code registry
     // legitimate packets that have passed confidence threshold
+    // subscribe to live updating qr code registry
     const legitimatePackets = combineLatest(groupedPackets, qrCodes).pipe(
         // ignore expired
         filter(([informations]) => {
             const {id, timestamp} = informations[0].original.source
             if (Date.now() - timestamp > packetExpirationDuration) {
-                console.log(chalk`{red Packet ${id} has expired. Ignoring}`)
+                // console.log(chalk`{red Packet ${id} has expired. Ignoring}`)
                 return false
             }
             return true
@@ -116,9 +137,9 @@ const streamSetup = ({publicKey}: KeyPair) => {
         // ignore already processed
         filter(([[{original}]]) => {
             if (processedPacketIds.has(packetIdCalculator(original))) {
-                console.log(
-                    chalk`{red Packet ${original.source.id} has already been processed. Ignoring}`,
-                )
+                // console.log(
+                //     chalk`{red Packet ${original.source.id} has already been processed. Ignoring}`,
+                // )
                 return false
             }
             return true
@@ -126,17 +147,22 @@ const streamSetup = ({publicKey}: KeyPair) => {
         // calculate confidence scores
         map(([informations, registry]) => ({
             confidence: calculateConfidenceScore(informations, registry),
+            confirmations: informations.map(({packet}) => packet),
             original: informations[0].original,
         })),
-        tap(({confidence, original}) =>
-            console.log(
-                `Packet with id ${original.source.id} has confidence ${inspect(
-                    confidence,
-                )}`,
-            ),
-        ),
+        tap(({confidence, original}) => {
+            if (confidence.confirmations > 1) {
+                console.log(
+                    `Packet with id ${
+                        original.source.id
+                    } has confidence ${inspect(confidence)}`,
+                )
+            }
+        }),
         // filter out packets that haven't met threshold
         filter(({confidence}) => confidence.score >= confidenceThreshold),
+        // distinct based on original packet (i.e., don't re-process packets)
+        distinct(({original: {source}}) => JSON.stringify(source)),
     )
     // packets that we have verified with our sensor information
     const rebroadcastablePackets = verifiedPackets.pipe(
@@ -144,7 +170,7 @@ const streamSetup = ({publicKey}: KeyPair) => {
         filter(([packet, registry]) =>
             sensedQrCode(
                 registry,
-                packet.source.publicKey,
+                Buffer.from(packet.source.publicKey, "hex"),
                 packet.source.timestamp,
             ),
         ),
@@ -163,7 +189,9 @@ const stringify = (packet: Packet | SignedPacket): string => {
 }
 
 const onNewPacket = async (
+    connection: SerialPort,
     packet: Signed<BroadcastPacket>,
+    confirmationsArr: SignedPacket[],
     confidence: number,
     confirmations: number,
 ) => {
@@ -174,6 +202,22 @@ const onNewPacket = async (
         } with {blue ${confidence} confidence} and {blue ${confirmations} confirmations}, {red ${duration /
             1000}} seconds after it was posted.}`,
     )
+
+    if (packet.event.type === "movement") {
+        await executeCommand(
+            connection,
+            Buffer.from(packet.event.command, "hex"),
+        )
+    }
+
+    // await writeDuration(
+    //     packet.source.id,
+    //     confirmationsArr.map(({source: {id}}) => id),
+    //     duration,
+    //     confidence,
+    //     confirmations,
+    // )
+
     // console.log(`Received verified packet: ${stringify(packet)}`)
 
     // const {event} = packet
@@ -184,10 +228,9 @@ const onNewPacket = async (
 }
 
 const main = async () => {
-    console.log(`Started`)
-
     const {privateKey, publicKey} = await loadKeyPair()
     const mqttClient = await mqttMain()
+    const connection = await commandsMain(mqttClient, {privateKey, publicKey})
 
     const {legitimatePackets, rebroadcastablePackets} = streamSetup({
         privateKey,
@@ -198,7 +241,7 @@ const main = async () => {
         runAsync(async () => {
             const location = getQrCodeLocation(
                 registry,
-                original.source.publicKey,
+                Buffer.from(original.source.publicKey, "hex"),
             )
             if (!location) {
                 console.log(
@@ -215,7 +258,7 @@ const main = async () => {
                 {
                     source: {
                         id: uuid(),
-                        publicKey,
+                        publicKey: publicKey.toString("hex"),
                         timestamp: Date.now(),
                     },
                     type: "rebroadcast",
@@ -229,7 +272,7 @@ const main = async () => {
     )
 
     legitimatePackets.subscribe(
-        async ({original, confidence}) => {
+        async ({original, confidence, confirmations}) => {
             const packetId = packetIdCalculator(original)
             if (processedPacketIds.has(packetId)) {
                 console.log(
@@ -237,10 +280,18 @@ const main = async () => {
                 )
                 return
             }
+            if (confidence.confirmations > 1) {
+                console.log(
+                    chalk`{blue Packet ${original.source.id} has multiple confirmations!}`,
+                )
+            }
+
             processedPacketIds.add(packetId)
 
             await onNewPacket(
+                connection,
                 original,
+                confirmations,
                 confidence.score,
                 confidence.confirmations,
             )
@@ -248,8 +299,7 @@ const main = async () => {
         error => console.log({error}),
     )
 
-    await sleep(500)
-    await Promise.all([timelineMain(), randomPacketsMain(mqttClient)])
+    await ipcMain()
 }
 
 main().catch(console.error)
