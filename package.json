@@ -13,9 +13,9 @@
     "devDependencies": {
         "@types/node": "^12.12.12",
         "@types/serialport": "^7.0.4",
-        "@types/socket.io": "^2.1.4",
-        "@types/socket.io-client": "^1.4.32",
         "@types/uuid": "^3.4.6",
+        "concurrently": "^5.1.0",
+        "execa": "^4.0.0",
         "prettier": "^1.19.1",
         "ts-node": "^8.6.2",
         "typescript": "^3.7.2"
@@ -23,16 +23,11 @@
     "dependencies": {
         "async-mqtt": "^2.5.0",
         "chalk": "^3.0.0",
-        "concurrently": "^5.1.0",
         "dotenv": "^8.2.0",
         "ed25519-supercop": "^1.2.0",
-        "execa": "^4.0.0",
         "python-struct": "^1.1.2",
         "rxjs": "^6.5.3",
         "serialport": "^8.0.5",
-        "socket.io": "^2.3.0",
-        "socket.io-client": "^2.3.0",
-        "svmq": "^1.0.7",
         "uuid": "^3.3.3"
     }
 }
