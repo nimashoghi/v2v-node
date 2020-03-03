@@ -31,8 +31,12 @@ const server = async (filePath: string) => {
 }
 
 export const ipcMain = async () => {
+    console.log("ipcMain")
+
     const [observable] = await server(IPC_SOCKET_PATH())
     return observable.subscribe(publicKey => {
+        console.log(`Sensed new public key: ${publicKey.toString("hex")}`)
+
         qrCodesSubject.next({
             location: "CENTER",
             publicKey,

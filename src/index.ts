@@ -129,7 +129,7 @@ const streamSetup = ({publicKey}: KeyPair) => {
         filter(([informations]) => {
             const {id, timestamp} = informations[0].original.source
             if (Date.now() - timestamp > packetExpirationDuration) {
-                // console.log(chalk`{red Packet ${id} has expired. Ignoring}`)
+                console.log(chalk`{red Packet ${id} has expired. Ignoring}`)
                 return false
             }
             return true
@@ -137,9 +137,9 @@ const streamSetup = ({publicKey}: KeyPair) => {
         // ignore already processed
         filter(([[{original}]]) => {
             if (processedPacketIds.has(packetIdCalculator(original))) {
-                // console.log(
-                //     chalk`{red Packet ${original.source.id} has already been processed. Ignoring}`,
-                // )
+                console.log(
+                    chalk`{red Packet ${original.source.id} has already been processed. Ignoring}`,
+                )
                 return false
             }
             return true
@@ -151,13 +151,11 @@ const streamSetup = ({publicKey}: KeyPair) => {
             original: informations[0].original,
         })),
         tap(({confidence, original}) => {
-            if (confidence.confirmations > 1) {
-                console.log(
-                    `Packet with id ${
-                        original.source.id
-                    } has confidence ${inspect(confidence)}`,
-                )
-            }
+            console.log(
+                `Packet with id ${original.source.id} has confidence ${inspect(
+                    confidence,
+                )}`,
+            )
         }),
         // filter out packets that haven't met threshold
         filter(({confidence}) => confidence.score >= confidenceThreshold),

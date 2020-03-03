@@ -1,6 +1,6 @@
 import {AsyncMqttClient} from "async-mqtt"
 import {combineLatest, merge} from "rxjs"
-import {filter, map, publish, throttleTime} from "rxjs/operators"
+import {debounceTime, filter, map, publish, startWith} from "rxjs/operators"
 import SerialPort from "serialport"
 import uuid from "uuid/v4"
 import {KeyPair} from "./crypto"
@@ -99,13 +99,14 @@ export const commandsMain = async (
                 merge(
                     observable,
                     observable.pipe(
-                        throttleTime(500),
+                        debounceTime(100),
                         map(() => "stop" as const),
                     ),
                 ),
                 observable.pipe(
                     filter(key => key === "down" || key === "up"),
                     map(key => key as "down" | "up"),
+                    startWith("up" as const),
                 ),
             ),
         ),

@@ -1,5 +1,4 @@
 import * as MQTT from "async-mqtt"
-import chalk from "chalk"
 import {Subject} from "rxjs"
 import {inspect} from "util"
 import {signPacket} from "./crypto"
@@ -30,9 +29,11 @@ export const broadcastSignedMessage = async <T extends Packet>(
 
 export const mqttMain = async () => {
     const client = await MQTT.connectAsync(HOST, {}, false)
-    client.on("message", (_, payload) =>
-        packetsSubject.next(JSON.parse(payload.toString())),
-    )
+    client.on("message", (_, payload) => {
+        const message = JSON.parse(payload.toString())
+        // console.log(`Received the following message: ${inspect(message)}`)
+        return packetsSubject.next(message)
+    })
     await client.subscribe(ALL_TOPICS, {...mqttSettings})
     return client
 }
