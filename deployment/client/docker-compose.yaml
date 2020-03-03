@@ -2,6 +2,9 @@ version: "3.7"
 services:
     client:
         image: nimashoghi/v2v-node:latest
+        privileged: true
+        stdin_open: true
+        tty: true
         environment:
             MQTT_HOST: "mqtt://192.168.1.14"
             MY_TOPIC: "${CLIENT_ID}"
@@ -12,7 +15,8 @@ services:
             - "./keys/:/app/keys/"
             - socket:/v2v/
     reader:
-        image: nimashoghi/v2v-cpp
+        image: nimashoghi/v2v-cpp:latest
+        privileged: true
         depends_on:
             - client
         volumes:
