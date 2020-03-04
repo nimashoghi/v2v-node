@@ -3,6 +3,11 @@ import {scan, startWith, tap} from "rxjs/operators"
 import {sensingThreshold} from "./settings"
 import {ObjectLocation} from "./types"
 
+export interface Point {
+    x: number
+    y: number
+}
+
 export interface QrCode {
     location: ObjectLocation
     publicKey: Buffer

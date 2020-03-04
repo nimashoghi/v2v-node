@@ -1,7 +1,7 @@
 import {promises as fs} from "fs"
 import net from "net"
 import {Observable, ReplaySubject} from "rxjs"
-import {qrCodesSubject} from "./qr"
+import {Point, qrCodesSubject} from "./qr"
 
 const IPC_SOCKET_PATH = () => process.env.IPC_SOCKET_PATH ?? "/v2v/server.sock"
 
@@ -34,12 +34,38 @@ export const ipcMain = async () => {
     console.log("ipcMain")
 
     const [observable] = await server(IPC_SOCKET_PATH())
-    return observable.subscribe(publicKey => {
-        console.log(`Sensed new public key: ${publicKey.toString("hex")}`)
+    return observable.subscribe(buffer => {
+        for (const chunk of buffer
+            .toString()
+            .split(";;;;")
+            .map(value => value.trim())
+            .filter(value => !!value)) {
+            const {
+                publicKey,
+                points,
+            }: {points: Point[]; publicKey: string} = JSON.parse(chunk)
+            const publicKeyBuffer = Buffer.from(publicKey, "base64")
+            const averagePoint = points
+                .map(({x, y}) => ({
+                    x: x / points.length,
+                    y: y / points.length,
+                }))
+                .reduce((prev, curr) => ({
+                    x: curr.x + prev.x,
+                    y: curr.y + prev.y,
+                }))
+            console.log(
+                `Sensed new public key: ${{
+                    averagePoint,
+                    points,
+                    publicKey: publicKeyBuffer.toString("hex"),
+                }}`,
+            )
 
-        qrCodesSubject.next({
-            location: "CENTER",
-            publicKey,
-        })
+            qrCodesSubject.next({
+                location: "CENTER",
+                publicKey: publicKeyBuffer,
+            })
+        }
     })
 }
