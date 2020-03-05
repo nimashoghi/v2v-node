@@ -1,7 +1,7 @@
 import {Subject} from "rxjs"
 import {scan, startWith, tap} from "rxjs/operators"
 import {sensingThreshold} from "./settings"
-import {ObjectLocation} from "./types"
+import {Vector2} from "./types"
 
 export interface Point {
     x: number
@@ -9,7 +9,7 @@ export interface Point {
 }
 
 export interface QrCode {
-    location: ObjectLocation
+    location: Vector2
     publicKey: Buffer
 }
 export interface QrCodeInformation extends QrCode {
@@ -47,23 +47,23 @@ export const sensedQrCode = (
     code: Buffer,
     timestamp: number,
 ) => {
-    const sensedAt = registry[code.toString("hex")]?.sensedAt
-    if (!sensedAt) {
+    const registryData = registry[code.toString("hex")]
+    if (!registryData?.sensedAt) {
         // console.log(
         //     `We have not sensed code ${code
         //         .toString("hex")
         //         .slice(0, 4)} at all!`,
         // )
-        return false
-    } else if (Math.abs(sensedAt - timestamp) > sensingThreshold) {
+        return undefined
+    } else if (Math.abs(registryData.sensedAt - timestamp) > sensingThreshold) {
         // console.log(
         //     `We have sensed the packet ${(Math.abs(sensedAt - timestamp) -
         //         sensingThreshold) /
         //         1000} seconds too late!`,
         // )
-        return false
+        return undefined
     }
-    return true
+    return registryData
 }
 
 export const getQrCodeLocation = (registry: QrCodeRegistry, code: Buffer) =>

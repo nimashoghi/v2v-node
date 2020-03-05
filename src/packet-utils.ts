@@ -1,6 +1,6 @@
 import {assert} from "console"
 import {verify} from "./crypto"
-import {QrCodeRegistry, registry, sensedQrCode} from "./qr"
+import {QrCodeRegistry, sensedQrCode} from "./qr"
 import {
     BroadcastPacket,
     PacketInformation,
@@ -21,32 +21,22 @@ export const verifyPacket = ({signature, ...packet}: SignedPacket) => {
 export const getDepth = (message: SignedPacket): number =>
     message.type === "broadcast" ? 1 : 1 + getDepth(message.original)
 
-export const calculateConfidenceScore = (
+export const calculateConfidenceScoreMany = (
     values: PacketInformation[],
-    qrCodeRegistry: QrCodeRegistry = registry,
-) => {
-    // console.log({
-    //     froms: values.map(
-    //         ({
-    //             packet: {
-    //                 source: {publicKey},
-    //             },
-    //         }) => publicKey,
-    //     ),
-    //     qrCodeRegistry,
-    // })
-
-    return values
+    registry: QrCodeRegistry,
+) =>
+    values
         .map(({depth, packet}) => {
             if (
                 !sensedQrCode(
-                    qrCodeRegistry,
+                    registry,
                     Buffer.from(packet.source.publicKey, "hex"),
                     packet.source.timestamp,
                 )
             ) {
                 return 0
             }
+
             console.log(
                 `Successfully sensed the QR code for ${packet.source.id}`,
             )
@@ -59,7 +49,6 @@ export const calculateConfidenceScore = (
             }),
             {confirmations: 0, score: 0},
         )
-}
 
 export const getOriginalPacket = (
     packet: Signed<RebroadcastPacket>,

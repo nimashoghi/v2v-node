@@ -11,6 +11,8 @@ services:
             ALL_TOPICS: "0,1"
             PRIVATE_KEY_LOCATION: "/app/keys/${CLIENT_ID}-private.bin"
             PUBLIC_KEY_LOCATION: "/app/keys/${CLIENT_ID}-public.bin"
+            DEMO: "${DEMO}"
+            SENSING_THRESHOLD: "5000"
         volumes:
             - "./keys/:/app/keys/"
             - socket:/v2v/

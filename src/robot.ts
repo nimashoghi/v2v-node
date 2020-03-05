@@ -9,6 +9,18 @@ import {broadcastSignedMessage} from "./mqtt"
 import {unreachable} from "./util"
 import struct = require("python-struct")
 
+let canMove = true
+export const stopMovement = () => {
+    setTimeout(() => {
+        canMove = false
+    }, parseFloat(process.env.STOP_MOVEMENT_DELAY ?? "0"))
+}
+export const startMovement = () => {
+    setTimeout(() => {
+        canMove = true
+    }, parseFloat(process.env.START_MOVEMENT_DELAY ?? "0"))
+}
+
 const sendStartSequence = async (connection: SerialPort) => {
     await executeCommand(connection, Buffer.from([0x80])) // PASISVE mode
     await executeCommand(connection, Buffer.from([0x84])) // FULL mode
@@ -25,7 +37,7 @@ export const executeCommand = async (
     connection: SerialPort,
     command: Buffer,
 ) => {
-    console.log(`Executing command ${command}`)
+    console.log(`Executing command ${command.toString("hex")}`)
 
     await new Promise<number>((resolve, reject) =>
         connection.write(command, (error, bytesWritten) => {
@@ -73,6 +85,12 @@ export const commandsMain = async (
     client: AsyncMqttClient,
     {publicKey, privateKey}: KeyPair,
 ) => {
+    const newSource = () => ({
+        id: uuid(),
+        publicKey: publicKey.toString("hex"),
+        timestamp: Date.now(),
+    })
+
     const connection = new SerialPort(
         process.env.ROBOT_SERIAL ?? "/dev/ttyUSB0",
         {
@@ -110,27 +128,63 @@ export const commandsMain = async (
                 ),
             ),
         ),
-        map(([key, last]) => getPacketData(key, last)),
-    ).subscribe(async command => {
+        map(([key, last]) => [getPacketData(key, last), key] as const),
+    ).subscribe(async ([command, direction]) => {
+        if (!canMove && direction !== "stop") {
+            console.log("canMove is false. Ignoring movement command!")
+            return
+        }
+
         await executeCommand(connection, command)
 
-        await broadcastSignedMessage(
-            client,
-            {
-                type: "broadcast",
-                event: {
-                    type: "movement",
-                    command: command.toString("hex"),
-                },
-                source: {
-                    id: uuid(),
-                    publicKey: publicKey.toString("hex"),
-                    timestamp: Date.now(),
-                },
-            },
-            publicKey,
-            privateKey,
-        )
+        switch (direction) {
+            case "space":
+                break
+            case "stop":
+                await Promise.all([
+                    broadcastSignedMessage(
+                        client,
+                        {
+                            type: "broadcast",
+                            event: {type: "stop"},
+                            source: newSource(),
+                        },
+                        publicKey,
+                        privateKey,
+                    ),
+                    broadcastSignedMessage(
+                        client,
+                        {
+                            type: "broadcast",
+                            event: {
+                                command: command.toString("hex"),
+                                direction,
+                                type: "command",
+                            },
+                            source: newSource(),
+                        },
+                        publicKey,
+                        privateKey,
+                    ),
+                ])
+                break
+            default:
+                await broadcastSignedMessage(
+                    client,
+                    {
+                        type: "broadcast",
+                        event: {
+                            command: command.toString("hex"),
+                            direction,
+                            type: "command",
+                        },
+                        source: newSource(),
+                    },
+                    publicKey,
+                    privateKey,
+                )
+                break
+        }
     })
 
     return connection

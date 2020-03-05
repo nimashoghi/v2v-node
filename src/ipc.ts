@@ -45,25 +45,24 @@ export const ipcMain = async () => {
                 points,
             }: {points: Point[]; publicKey: string} = JSON.parse(chunk)
             const publicKeyBuffer = Buffer.from(publicKey, "base64")
-            const averagePoint = points
-                .map(({x, y}) => ({
-                    x: x / points.length,
-                    y: y / points.length,
-                }))
-                .reduce((prev, curr) => ({
-                    x: curr.x + prev.x,
-                    y: curr.y + prev.y,
-                }))
+            const location = points
+                .map(
+                    ({x, y}) => [x / points.length, y / points.length] as const,
+                )
+                .reduce(
+                    (prev, curr) =>
+                        [curr[0] + prev[0], curr[1] + prev[1]] as const,
+                )
             console.log(
                 `Sensed new public key: ${{
-                    averagePoint,
+                    location,
                     points,
                     publicKey: publicKeyBuffer.toString("hex"),
                 }}`,
             )
 
             qrCodesSubject.next({
-                location: "CENTER",
+                location,
                 publicKey: publicKeyBuffer,
             })
         }

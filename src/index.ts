@@ -1,32 +1,33 @@
 require("dotenv").config({path: process.argv[2] || undefined})
 
 import chalk from "chalk"
-import {combineLatest, of} from "rxjs"
+import {combineLatest, empty, of} from "rxjs"
 import {
     debounceTime,
     distinct,
     filter,
+    flatMap,
     groupBy,
     map,
     mergeMap,
     scan,
     tap,
 } from "rxjs/operators"
-import SerialPort from "serialport"
 import {inspect} from "util"
 import uuid from "uuid/v4"
 import {KeyPair, loadKeyPair} from "./crypto"
+import {handleDemoPacket} from "./demos"
 import {ipcMain} from "./ipc"
 import {broadcastSignedMessage, mqttMain, packetsObservable} from "./mqtt"
 import {
-    calculateConfidenceScore,
+    calculateConfidenceScoreMany,
     getPacketInformation,
     isMineAtAnyPoint,
     packetIdCalculator,
     verifyPacket,
 } from "./packet-utils"
-import {getQrCodeLocation, qrCodes, sensedQrCode} from "./qr"
-import {commandsMain, executeCommand} from "./robot"
+import {qrCodes, sensedQrCode} from "./qr"
+import {commandsMain} from "./robot"
 import {
     confidenceThreshold,
     packetExpirationDuration,
@@ -38,8 +39,9 @@ import {
     PacketInformation,
     Signed,
     SignedPacket,
+    Vector2,
 } from "./types"
-import {runAsync} from "./util"
+import {runAsync, unreachable} from "./util"
 
 const processedPacketIds = new Set<string>()
 
@@ -144,10 +146,29 @@ const streamSetup = ({publicKey}: KeyPair) => {
             }
             return true
         }),
+        // get the position of the original packet
+        // map(
+        //     ([informations, registry]) =>
+        //         [
+        //             informations.map(information => ({
+        //                 ...information,
+        //                 qr: sensedQrCode(
+        //                     registry,
+        //                     Buffer.from(
+        //                         information.packet.source.publicKey,
+        //                         "hex",
+        //                     ),
+        //                     information.packet.source.timestamp,
+        //                 ),
+        //             })),
+        //             registry,
+        //         ] as const,
+        // ),
+
         // calculate confidence scores
         map(([informations, registry]) => ({
-            confidence: calculateConfidenceScore(informations, registry),
-            confirmations: informations.map(({packet}) => packet),
+            confidence: calculateConfidenceScoreMany(informations, registry),
+            informations,
             original: informations[0].original,
         })),
         tap(({confidence, original}) => {
@@ -165,13 +186,17 @@ const streamSetup = ({publicKey}: KeyPair) => {
     // packets that we have verified with our sensor information
     const rebroadcastablePackets = verifiedPackets.pipe(
         mergeMap(packet => combineLatest(of(packet), qrCodes)),
-        filter(([packet, registry]) =>
-            sensedQrCode(
+        flatMap(([packet, registry]) => {
+            const qr = sensedQrCode(
                 registry,
                 Buffer.from(packet.source.publicKey, "hex"),
                 packet.source.timestamp,
-            ),
-        ),
+            )
+            if (!qr) {
+                return empty()
+            }
+            return of([packet, registry, qr] as const)
+        }),
         distinct(([{source}]) => JSON.stringify(source)),
     )
 
@@ -186,67 +211,60 @@ const stringify = (packet: Packet | SignedPacket): string => {
     return JSON.stringify(packet, undefined, 4)
 }
 
-const onNewPacket = async (
-    connection: SerialPort,
-    packet: Signed<BroadcastPacket>,
-    confirmationsArr: SignedPacket[],
-    confidence: number,
-    confirmations: number,
-) => {
-    const duration = Date.now() - packet.source.timestamp
-    console.log(
-        chalk`{green Received packet ${
-            packet.source.id
-        } with {blue ${confidence} confidence} and {blue ${confirmations} confirmations}, {red ${duration /
-            1000}} seconds after it was posted.}`,
-    )
-
-    if (packet.event.type === "movement") {
-        await executeCommand(
-            connection,
-            Buffer.from(packet.event.command, "hex"),
-        )
-    }
-
-    // await writeDuration(
-    //     packet.source.id,
-    //     confirmationsArr.map(({source: {id}}) => id),
-    //     duration,
-    //     confidence,
-    //     confirmations,
-    // )
-
-    // console.log(`Received verified packet: ${stringify(packet)}`)
-
-    // const {event} = packet
-    // switch (event.type) {
-    //     default:
-    //         unreachable()
-    // }
+interface NewPacket {
+    confidence: {score: number; confirmations: number}
+    informations: PacketInformation[]
+    original: Signed<BroadcastPacket>
 }
 
 const main = async () => {
     const {privateKey, publicKey} = await loadKeyPair()
     const mqttClient = await mqttMain()
     const connection = await commandsMain(mqttClient, {privateKey, publicKey})
+    const onNewPacket = async ({
+        confidence: {score: confidence, confirmations},
+        informations,
+        original,
+    }: NewPacket) => {
+        const duration = Date.now() - original.source.timestamp
+        console.log(
+            chalk`{green Received original ${
+                original.source.id
+            } with {blue ${confidence} confidence} and {blue ${confirmations} confirmations}, {red ${duration /
+                1000}} seconds after it was posted.}`,
+        )
+
+        const getPositionChain = (
+            packet: SignedPacket,
+            currChain: Vector2[] = [],
+        ): Vector2[] => {
+            switch (packet.type) {
+                case "broadcast":
+                    return []
+                case "rebroadcast":
+                    return getPositionChain(packet.original, [
+                        ...currChain,
+                        packet.location,
+                    ])
+                default:
+                    return unreachable()
+            }
+        }
+
+        handleDemoPacket(
+            connection,
+            original,
+            informations.map(({packet}) => getPositionChain(packet)),
+        )
+    }
 
     const {legitimatePackets, rebroadcastablePackets} = streamSetup({
         privateKey,
         publicKey,
     })
 
-    rebroadcastablePackets.subscribe(([original, registry]) =>
+    rebroadcastablePackets.subscribe(([original, , {location}]) =>
         runAsync(async () => {
-            const location = getQrCodeLocation(
-                registry,
-                Buffer.from(original.source.publicKey, "hex"),
-            )
-            if (!location) {
-                console.log(
-                    `Could not get location for QR code ${original.source.publicKey}`,
-                )
-                return
-            }
             console.log(
                 chalk`{green Rebroadcasting packet ${original.source.id}}`,
             )
@@ -270,7 +288,7 @@ const main = async () => {
     )
 
     legitimatePackets.subscribe(
-        async ({original, confidence, confirmations}) => {
+        async ({confidence, informations, original}) => {
             const packetId = packetIdCalculator(original)
             if (processedPacketIds.has(packetId)) {
                 console.log(
@@ -286,13 +304,7 @@ const main = async () => {
 
             processedPacketIds.add(packetId)
 
-            await onNewPacket(
-                connection,
-                original,
-                confirmations,
-                confidence.score,
-                confidence.confirmations,
-            )
+            await onNewPacket({confidence, informations, original})
         },
         error => console.log({error}),
     )

@@ -1,10 +1,14 @@
-export interface MovementEvent {
-    type: "movement"
-    command: string
-}
-export type BroadcastEvent = MovementEvent
+export type Vector2 = readonly [number, number]
 
-export type ObjectLocation = "LEFT" | "CENTER" | "RIGHT"
+export interface CommandEvent {
+    command: string
+    direction: "up" | "down" | "right" | "left" | "stop" | "space"
+    type: "command"
+}
+export interface StopEvent {
+    type: "stop"
+}
+export type BroadcastEvent = CommandEvent | StopEvent
 
 export interface PacketSource {
     id: string
@@ -29,7 +33,7 @@ export interface BroadcastPacket extends PacketBase {
 
 export interface RebroadcastPacket extends PacketBase {
     type: "rebroadcast"
-    location: ObjectLocation
+    location: Vector2
     original: SignedPacket
 }
 
@@ -40,4 +44,8 @@ export interface PacketInformation {
     depth: number
     original: Signed<BroadcastPacket>
     packet: SignedPacket
+}
+
+export type Processed<T extends PacketBase> = Signed<T> & {
+    location: readonly [number, number]
 }
