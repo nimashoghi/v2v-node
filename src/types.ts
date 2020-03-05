@@ -5,10 +5,8 @@ export interface CommandEvent {
     direction: "up" | "down" | "right" | "left" | "stop" | "space"
     type: "command"
 }
-export interface StopEvent {
-    type: "stop"
-}
-export type BroadcastEvent = CommandEvent | StopEvent
+
+export type BroadcastEvent = CommandEvent
 
 export interface PacketSource {
     id: string

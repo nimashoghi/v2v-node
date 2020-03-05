@@ -12,6 +12,7 @@ import {
     mergeMap,
     scan,
     tap,
+    withLatestFrom,
 } from "rxjs/operators"
 import {inspect} from "util"
 import uuid from "uuid/v4"
@@ -48,6 +49,15 @@ const processedPacketIds = new Set<string>()
 const streamSetup = ({publicKey}: KeyPair) => {
     // filter out packets that we have processed already
     const nonProcessedFirstCheck = packetsObservable.pipe(
+        // tap(packet =>
+        //     console.log(
+        //         chalk`{green Received original packet: ${JSON.stringify(
+        //             packet,
+        //             undefined,
+        //             4,
+        //         )}}`,
+        //     ),
+        // ),
         // tap(packet => {
         //     if (networkDelay.has(packet.source.id)) {
         //         return
@@ -96,6 +106,15 @@ const streamSetup = ({publicKey}: KeyPair) => {
     )
     // get the packet original information so we don't have to recalculate in the future
     const packetInformation = nonProcessedVerifiedPackets.pipe(
+        // tap(packet =>
+        //     console.log(
+        //         chalk`{blue Received nonProcessedVerified packet: ${JSON.stringify(
+        //             packet,
+        //             undefined,
+        //             4,
+        //         )}}`,
+        //     ),
+        // ),
         map(getPacketInformation),
     )
     // filter out packets that we have processed already
@@ -123,6 +142,9 @@ const streamSetup = ({publicKey}: KeyPair) => {
                 scan((acc, curr) => [...acc, curr], [] as PacketInformation[]),
             ),
         ),
+        // tap(informations =>
+        //     console.log(JSON.stringify({informations}, undefined, 4)),
+        // ),
     )
     // legitimate packets that have passed confidence threshold
     // subscribe to live updating qr code registry
@@ -185,16 +207,22 @@ const streamSetup = ({publicKey}: KeyPair) => {
     )
     // packets that we have verified with our sensor information
     const rebroadcastablePackets = verifiedPackets.pipe(
-        mergeMap(packet => combineLatest(of(packet), qrCodes)),
+        // mergeMap(packet => combineLatest(of(packet), qrCodes)),
+        withLatestFrom(qrCodes),
         flatMap(([packet, registry]) => {
+            // console.log(`Rebroadcastable? ${packet.source.id}`)
             const qr = sensedQrCode(
                 registry,
                 Buffer.from(packet.source.publicKey, "hex"),
                 packet.source.timestamp,
             )
             if (!qr) {
+                console.log(`Not sensed QR code for packet ${packet.source.id}`)
                 return empty()
             }
+            // else {
+            //     console.log(`Have sensed qr code for ${packet.source.id}`)
+            // }
             return of([packet, registry, qr] as const)
         }),
         distinct(([{source}]) => JSON.stringify(source)),

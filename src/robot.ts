@@ -135,56 +135,23 @@ export const commandsMain = async (
             return
         }
 
-        await executeCommand(connection, command)
-
-        switch (direction) {
-            case "space":
-                break
-            case "stop":
-                await Promise.all([
-                    broadcastSignedMessage(
-                        client,
-                        {
-                            type: "broadcast",
-                            event: {type: "stop"},
-                            source: newSource(),
-                        },
-                        publicKey,
-                        privateKey,
-                    ),
-                    broadcastSignedMessage(
-                        client,
-                        {
-                            type: "broadcast",
-                            event: {
-                                command: command.toString("hex"),
-                                direction,
-                                type: "command",
-                            },
-                            source: newSource(),
-                        },
-                        publicKey,
-                        privateKey,
-                    ),
-                ])
-                break
-            default:
-                await broadcastSignedMessage(
-                    client,
-                    {
-                        type: "broadcast",
-                        event: {
-                            command: command.toString("hex"),
-                            direction,
-                            type: "command",
-                        },
-                        source: newSource(),
+        await Promise.all([
+            executeCommand(connection, command),
+            broadcastSignedMessage(
+                client,
+                {
+                    type: "broadcast",
+                    event: {
+                        command: command.toString("hex"),
+                        direction,
+                        type: "command",
                     },
-                    publicKey,
-                    privateKey,
-                )
-                break
-        }
+                    source: newSource(),
+                },
+                publicKey,
+                privateKey,
+            ),
+        ])
     })
 
     return connection

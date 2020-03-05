@@ -8,7 +8,7 @@ services:
         environment:
             MQTT_HOST: "mqtt://192.168.1.14"
             MY_TOPIC: "${CLIENT_ID}"
-            ALL_TOPICS: "0,1"
+            ALL_TOPICS: "0,1,2,3,4"
             PRIVATE_KEY_LOCATION: "/app/keys/${CLIENT_ID}-private.bin"
             PUBLIC_KEY_LOCATION: "/app/keys/${CLIENT_ID}-public.bin"
             DEMO: "${DEMO}"

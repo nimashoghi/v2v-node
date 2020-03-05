@@ -57,7 +57,9 @@ export const sensedQrCode = (
         return undefined
     } else if (Math.abs(registryData.sensedAt - timestamp) > sensingThreshold) {
         // console.log(
-        //     `We have sensed the packet ${(Math.abs(sensedAt - timestamp) -
+        //     `We have sensed the packet ${(Math.abs(
+        //         registryData.sensedAt - timestamp,
+        //     ) -
         //         sensingThreshold) /
         //         1000} seconds too late!`,
         // )
